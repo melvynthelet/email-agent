@@ -1,0 +1,30 @@
+# Fichiers secrets - NE JAMAIS COMMIT SUR GITHUB
+environnement.env
+*.env
+.env
+
+# Base de données locale
+*.db
+email_agent.db
+
+# Fichiers Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Environnements virtuels
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Système
+.DS_Store
+Thumbs.db
