@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Agent - Dashboard Admin</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; }
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect } = React;
+
+// ⚠️ CONFIGUREZ VOTRE API ICI ⚠️
+const API_URL = 'https://email-agent-api-g16o.onrender.com'; // CHANGEZ CETTE URL
+
+const AdminDashboard = () => {
+    const [activeTab, setActiveTab] = useState('login');
+    const [adminKey, setAdminKey] = useState('');
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [clients, setClients] = useState([]);
+    const [logs, setLogs] = useState([]);
+    const [stats, setStats] = useState(null);
+    const [error, setError] = useState('');
+    const [showNewClientForm, setShowNewClientForm] = useState(false);
+    const [selectedClientForLogs, setSelectedClientForLogs] = useState(null);
+    
+    const [newClient, setNewClient] = useState({
+        company_name: '',
+        email: '',
+        config: {
+            companyName: '',
+            companyDescription: '',
+            signatoryName: '',
+            signatoryRole: '',
+            email: '',
+            phone: '',
+            address: '',
+            siret: '',
+            tvaNumber: '',
+            paymentDelay: '30',
+            bankDetails: ''
+        }
+    });
+
+    const authenticate = async () => {
+        if (!adminKey.trim()) { setError('Veuillez entrer la clé admin'); return; }
+        setIsLoading(true); setError('');
+        try {
+            const response = await fetch(`${API_URL}/admin/stats`, {
+                headers: { 'Authorization': `Bearer ${adminKey}` }
+            });
+            if (response.ok) { setIsAuthenticated(true); setActiveTab('dashboard'); loadData(); } 
+            else { setError('Clé admin invalide'); }
+        } catch (err) { setError('Erreur de connexion à l\'API. Vérifiez l\'URL.'); } 
+        finally { setIsLoading(false); }
+    };
+
+    const loadData = async () => {
+        setIsLoading(true);
+        try {
+            const statsRes = await fetch(`${API_URL}/admin/stats`, { headers: { 'Authorization': `Bearer ${adminKey}` } });
+            if (statsRes.ok) setStats(await statsRes.json());
+
+            const clientsRes = await fetch(`${API_URL}/admin/clients`, { headers: { 'Authorization': `Bearer ${adminKey}` } });
+            if (clientsRes.ok) setClients(await clientsRes.json());
+
+            const logsRes = await fetch(`${API_URL}/admin/logs?limit=50`, { headers: { 'Authorization': `Bearer ${adminKey}` } });
+            if (logsRes.ok) setLogs(await logsRes.json());
+        } catch (err) { console.error(err); } 
+        finally { setIsLoading(false); }
+    };
+
+    const createClient = async () => {
+        if (!newClient.company_name || !newClient.email) { alert('Nom entreprise et email sont obligatoires'); return; }
+        setIsLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/clients`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${adminKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify(newClient)
+            });
+            if (res.ok) {
+                const data = await res.json();
+                alert(`✅ Client créé avec succès!\n\n🆔 Client ID:\n${data.client_id}`);
+                loadData();
+                setShowNewClientForm(false);
+                setNewClient({ company_name:'', email:'', config: {...newClient.config} });
+            } else { alert('❌ Erreur lors de la création du client'); }
+        } catch { alert('❌ Erreur réseau'); } 
+        finally { setIsLoading(false); }
+    };
+
+    const toggleClient = async (clientId, field, currentValue) => {
+        setIsLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/clients/${clientId}/toggle`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${adminKey}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ field, value: !currentValue })
+            });
+            if (res.ok) loadData(); else alert('❌ Erreur mise à jour');
+        } catch { alert('❌ Erreur réseau'); } 
+        finally { setIsLoading(false); }
+    };
+
+    const loadClientLogs = async (clientId) => {
+        setIsLoading(true);
+        try {
+            const res = await fetch(`${API_URL}/admin/logs?client_id=${clientId}&limit=100`, { headers: { 'Authorization': `Bearer ${adminKey}` } });
+            if (res.ok) { setLogs(await res.json()); setSelectedClientForLogs(clientId); }
+        } catch (err) { console.error(err); } 
+        finally { setIsLoading(false); }
+    };
+
+    const copyToClipboard = (text) => { navigator.clipboard.writeText(text); alert('✅ Copié dans le presse-papier !'); };
+
+    if (!isAuthenticated) {
+        return (
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6">
+                <div className="bg-slate-800 rounded-2xl p-8 shadow-2xl max-w-md w-full">
+                    <h1 className="text-3xl font-bold text-white mb-4">Email Agent Pro</h1>
+                    {error && <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-4"><p className="text-red-300">{error}</p></div>}
+                    <input
+                        type="password"
+                        placeholder="ADMIN_SECRET"
+                        value={adminKey}
+                        onChange={e => setAdminKey(e.target.value)}
+                        className="w-full p-4 mb-4 bg-slate-700 text-white rounded-lg"
+                        disabled={isLoading}
+                        onKeyPress={e => e.key==='Enter' && authenticate()}
+                    />
+                    <button onClick={authenticate} className="w-full bg-purple-600 text-white py-3 rounded-lg font-bold">{isLoading ? 'Connexion...' : '🔓 Se Connecter'}</button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-slate-900 p-6">
+            <div className="max-w-7xl mx-auto">
+                <div className="flex justify-between items-center mb-8">
+                    <h1 className="text-4xl font-bold text-white">Dashboard Admin</h1>
+                    <button onClick={()=>{setIsAuthenticated(false); setAdminKey('');}} className="bg-red-600 text-white px-6 py-2 rounded-lg">🚪 Déconnexion</button>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-4 mb-6">
+                    <button onClick={()=>setActiveTab('dashboard')} className={`px-6 py-3 rounded-lg font-semibold ${activeTab==='dashboard'?'bg-blue-600 text-white':'bg-slate-800 text-gray-300'}`}>📊 Vue d'ensemble</button>
+                    <button onClick={()=>setActiveTab('clients')} className={`px-6 py-3 rounded-lg font-semibold ${activeTab==='clients'?'bg-blue-600 text-white':'bg-slate-800 text-gray-300'}`}>👥 Clients ({clients.length})</button>
+                    <button onClick={()=>setActiveTab('logs')} className={`px-6 py-3 rounded-lg font-semibold ${activeTab==='logs'?'bg-blue-600 text-white':'bg-slate-800 text-gray-300'}`}>📝 Logs ({logs.length})</button>
+                    <button onClick={loadData} disabled={isLoading} className="ml-auto px-6 py-3 bg-purple-600 text-white rounded-lg">🔄 Actualiser</button>
+                </div>
+
+                {activeTab==='dashboard' && (
+                    <div className="bg-slate-800 rounded-xl p-8 shadow-xl">
+                        <h2 className="text-2xl font-bold text-white mb-6">Vue d'ensemble</h2>
+                        <p className="text-gray-300">API_URL: <span className="text-blue-400 break-all">{API_URL}</span></p>
+                        <p className="text-gray-300">Clients: {clients.length} | Logs: {logs.length}</p>
+                    </div>
+                )}
+
+                {activeTab==='clients' && (
+                    <div className="space-y-6">
+                        <button onClick={()=>setShowNewClientForm(!showNewClientForm)} className="bg-blue-600 text-white px-4 py-2 rounded-lg">{showNewClientForm?'❌ Annuler':'➕ Nouveau Client'}</button>
+                        {showNewClientForm && (
+                            <div className="bg-slate-700 rounded-lg p-4">
+                                <input type="text" placeholder="Nom entreprise" value={newClient.company_name} onChange={e=>setNewClient({...newClient, company_name:e.target.value})} className="w-full p-2 mb-2"/>
+                                <input type="email" placeholder="Email" value={newClient.email} onChange={e=>setNewClient({...newClient,email:e.target.value})} className="w-full p-2 mb-2"/>
+                                <button onClick={createClient} className="bg-green-600 text-white px-4 py-2 rounded-lg">{isLoading?'Création...':'✅ Créer Client'}</button>
+                            </div>
+                        )}
+                        {clients.map(client=>(
+                            <div key={client.client_id} className="bg-slate-700 p-4 rounded-lg mb-2">
+                                <div className="flex justify-between">
+                                    <div>
+                                        <p className="text-white font-bold">{client.company_name}</p>
+                                        <p className="text-gray-300 text-sm">📧 {client.email}</p>
+                                        <p className="text-gray-400 text-xs">🆔 {client.client_id}</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={()=>toggleClient(client.client_id,'is_active',client.is_active)} className={`px-3 py-1 rounded-lg text-white ${client.is_active?'bg-green-600':'bg-red-600'}`}>{client.is_active?'🟢 ON':'🔴 OFF'}</button>
+                                        <button onClick={()=>toggleClient(client.client_id,'draft_mode',client.draft_mode)} className={`px-3 py-1 rounded-lg text-white ${client.draft_mode?'bg-yellow-600':'bg-blue-600'}`}>{client.draft_mode?'📝 Draft':'⚡ Auto'}</button>
+                                        <button onClick={()=>copyToClipboard(client.client_id)} className="px-3 py-1 rounded-lg bg-slate-500 text-white">📋 Copier</button>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {activeTab==='logs' && (
+                    <div className="bg-slate-800 rounded-xl p-6 shadow-xl">
+                        <h2 className="text-2xl font-bold text-white mb-4">Logs</h2>
+                        {logs.map((log,i)=>(
+                            <div key={i} className="bg-slate-700 p-2 mb-2 rounded-lg text-gray-200">{JSON.stringify(log)}</div>
+                        ))}
+                    </div>
+                )}
+
+            </div>
+        </div>
+    );
+};
+
+ReactDOM.render(<AdminDashboard />, document.getElementById('root'));
+</script>
+</body>
+</html>
